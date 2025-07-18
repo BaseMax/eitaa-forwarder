@@ -507,13 +507,13 @@ func buildMessageText(post Post, username string) string {
 		sb.WriteString(post.Text)
 	}
 	if post.IsForwarded {
-		sb.WriteString(fmt.Sprintf("\n\n_Forwarded from:_ [%s](%s)", post.ForwardedFrom, post.ForwardedFromLink))
+		sb.WriteString(fmt.Sprintf("\n\nForwarded from: [%s](%s)", post.ForwardedFrom, post.ForwardedFromLink))
 	}
 	if post.IsReply {
-		sb.WriteString(fmt.Sprintf("\n\n_In reply to:_ https://eitaa.com/%s/%s", username, post.ReplyToMessageID))
+		sb.WriteString(fmt.Sprintf("\n\nIn reply to: https://eitaa.com/%s/%s", username, post.ReplyToMessageID))
 	}
 	if post.Time != "" && post.Date != "" {
-		sb.WriteString(fmt.Sprintf("\n\n_Posted on:_ %s %s", post.Date, post.Time))
+		sb.WriteString(fmt.Sprintf("\n\nPosted on: %s %s", post.Date, post.Time))
 	}
 	return sb.String()
 }
