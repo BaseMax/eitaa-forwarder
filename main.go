@@ -115,7 +115,7 @@ func (app *App) fetchAndExtractPosts() ([]Post, error) {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	app.setRequestHeaders(req)
+	app.setRequestHeaders(req, url)
 	resp, err := app.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch channel page: %w", err)
@@ -148,10 +148,23 @@ func (app *App) fetchAndExtractPosts() ([]Post, error) {
 	return posts, nil
 }
 
-func (app *App) setRequestHeaders(req *http.Request) {
+func (app *App) setRequestHeaders(req *http.Request, referer string) {
 	headers := map[string]string{
-		"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0 Safari/537.36",
-		"Accept":     "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+		"Referer":                   referer,
+		"User-Agent":                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0",
+		"Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+		"Accept-Language":           "en-US,en;q=0.5",
+		"Accept-Encoding":           "gzip, deflate, br, zstd",
+		"Upgrade-Insecure-Requests": "1",
+		"Connection":                "keep-alive",
+		"Sec-Fetch-Dest":            "document",
+		"Sec-Fetch-Mode":            "navigate",
+		"Sec-Fetch-Site":            "none",
+		"Sec-Fetch-User":            "?1",
+		"Priority":                  "u=0, i",
+		"Pragma":                    "no-cache",
+		"Cache-Control":             "no-cache",
+		"TE":                        "trailers",
 	}
 	for k, v := range headers {
 		req.Header.Set(k, v)
@@ -162,6 +175,8 @@ func (app *App) savePostsAndMedia(posts []Post) error {
 	if err := app.savePostsToJSON(posts); err != nil {
 		return fmt.Errorf("failed to save posts to JSON: %w", err)
 	}
+
+	refererURL := fmt.Sprintf("https://eitaa.com/%s", app.config.Username)
 
 	for _, post := range posts {
 		if len(post.Images) == 0 {
@@ -176,7 +191,7 @@ func (app *App) savePostsAndMedia(posts []Post) error {
 
 		for i, imgURL := range post.Images {
 			filename := filepath.Join(dir, fmt.Sprintf("img%d.jpg", i+1))
-			if err := app.downloadImage(imgURL, filename); err != nil {
+			if err := app.downloadImage(imgURL, filename, refererURL); err != nil {
 				app.logger.Printf("Failed to download image %s: %v", imgURL, err)
 				continue
 			}
@@ -274,7 +289,7 @@ func (app *App) sendMediaGroup(post Post, messageText, dir string) error {
 	return err
 }
 
-func (app *App) downloadImage(url, filename string) error {
+func (app *App) downloadImage(url, filename string, refererURL string) error {
 	if _, err := os.Stat(filename); !os.IsNotExist(err) {
 		return nil
 	}
@@ -283,7 +298,8 @@ func (app *App) downloadImage(url, filename string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create request for %s: %w", url, err)
 	}
-	app.setRequestHeaders(req)
+
+	app.setRequestHeaders(req, refererURL)
 
 	resp, err := app.client.Do(req)
 	if err != nil {
