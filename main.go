@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 type Post struct {
@@ -151,11 +152,57 @@ func extractPosts(doc *goquery.Document, username string) ([]Post, error) {
 	return posts, nil
 }
 
+// loadSentPostIDs reads the list of sent post IDs from a file
+func loadSentPostIDs(filename string) (map[string]bool, error) {
+	sentIDs := make(map[string]bool)
+	data, err := os.ReadFile(filename)
+	if os.IsNotExist(err) {
+		return sentIDs, nil // File doesn't exist yet, return empty map
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to read sent IDs file: %v", err)
+	}
+	var ids []string
+	if err := json.Unmarshal(data, &ids); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal sent IDs: %v", err)
+	}
+	for _, id := range ids {
+		sentIDs[id] = true
+	}
+	return sentIDs, nil
+}
+
+// saveSentPostID appends a post ID to the sent IDs file
+func saveSentPostID(filename, postID string) error {
+	sentIDs, err := loadSentPostIDs(filename)
+	if err != nil {
+		return err
+	}
+	if sentIDs[postID] {
+		return nil // ID already exists, no need to save
+	}
+	sentIDs[postID] = true
+	var ids []string
+	for id := range sentIDs {
+		ids = append(ids, id)
+	}
+	data, err := json.MarshalIndent(ids, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal sent IDs: %v", err)
+	}
+	return os.WriteFile(filename, data, 0644)
+}
+
 func main() {
+	// Define CLI flags
 	usernameFlag := flag.String("username", "", "Eitaa channel username (e.g., m_ahlebeit)")
 	outputFlag := flag.String("output", "", "Output JSON file")
+	telegramTokenFlag := flag.String("telegram-token", "", "Telegram bot token")
+	telegramChatIDFlag := flag.String("telegram-chat-id", "", "Telegram chat ID")
+	sentIDsFileFlag := flag.String("sent-ids-file", "", "File to store sent post IDs")
 	flag.Parse()
 
+	// Check CLI flags first, then fall back to environment variables
 	username := *usernameFlag
 	if username == "" {
 		username = os.Getenv("USERNAME")
@@ -170,6 +217,35 @@ func main() {
 	}
 	if output == "" {
 		output = "posts.json"
+	}
+
+	telegramToken := *telegramTokenFlag
+	if telegramToken == "" {
+		telegramToken = os.Getenv("TELEGRAM_TOKEN")
+	}
+	if telegramToken == "" {
+		log.Fatal("Please provide a Telegram bot token via -telegram-token flag or TELEGRAM_TOKEN environment variable")
+	}
+
+	telegramChatID := *telegramChatIDFlag
+	if telegramChatID == "" {
+		telegramChatID = os.Getenv("TELEGRAM_CHAT_ID")
+	}
+	if telegramChatID == "" {
+		log.Fatal("Please provide a Telegram chat ID via -telegram-chat-id flag or TELEGRAM_CHAT_ID environment variable")
+	}
+
+	sentIDsFile := *sentIDsFileFlag
+	if sentIDsFile == "" {
+		sentIDsFile = os.Getenv("SENT_IDS_FILE")
+	}
+	if sentIDsFile == "" {
+		sentIDsFile = "sent_ids.json"
+	}
+
+	sentIDs, err := loadSentPostIDs(sentIDsFile)
+	if err != nil {
+		log.Fatalf("Failed to load sent post IDs: %v", err)
 	}
 
 	url := fmt.Sprintf("https://eitaa.com/%s", username)
@@ -204,4 +280,56 @@ func main() {
 	}
 
 	fmt.Printf("Successfully scraped %d posts to %s\n", len(posts), output)
+
+	bot, err := tgbotapi.NewBotAPI(telegramToken)
+	if err != nil {
+		log.Fatalf("Failed to initialize Telegram bot: %v", err)
+	}
+
+	for _, post := range posts {
+		if sentIDs[post.ID] {
+			fmt.Printf("Skipping post %s: already sent\n", post.ID)
+			continue
+		}
+
+		messageText := post.Text
+		if post.IsForwarded {
+			messageText += fmt.Sprintf("\n\nForwarded from: %s (%s)", post.ForwardedFrom, post.ForwardedFromLink)
+		}
+		if post.IsReply {
+			messageText += fmt.Sprintf("\n\nIn reply to: https://eitaa.com/%s/%s", username, post.ReplyToMessageID)
+		}
+		if post.Time != "" && post.Date != "" {
+			messageText += fmt.Sprintf("\n\nPosted on: %s %s", post.Date, post.Time)
+		}
+
+		msg := tgbotapi.NewMessageToChannel(telegramChatID, messageText)
+		sentMsg, err := bot.Send(msg)
+		if err != nil {
+			log.Printf("Failed to send post %s to Telegram: %v", post.ID, err)
+			continue
+		}
+
+		if err := saveSentPostID(sentIDsFile, post.ID); err != nil {
+			log.Printf("Failed to save sent post ID %s: %v", post.ID, err)
+		} else {
+			fmt.Printf("Successfully sent post %s to Telegram (Message ID: %d)\n", post.ID, sentMsg.MessageID)
+		}
+
+		for _, imgURL := range post.Images {
+			photoMsg := tgbotapi.NewPhotoToChannel(telegramChatID, tgbotapi.FileURL(imgURL))
+			_, err := bot.Send(photoMsg)
+			if err != nil {
+				log.Printf("Failed to send image %s for post %s: %v", imgURL, post.ID, err)
+			}
+		}
+
+		for _, vidURL := range post.Videos {
+			videoMsg := tgbotapi.NewVideoToChannel(telegramChatID, tgbotapi.FileURL(vidURL))
+			_, err := bot.Send(videoMsg)
+			if err != nil {
+				log.Printf("Failed to send video %s for post %s: %v", vidURL, post.ID, err)
+			}
+		}
+	}
 }

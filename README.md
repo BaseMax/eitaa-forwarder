@@ -10,6 +10,12 @@ Eitaa Extractor is a Go-based web scraper designed to extract posts from Eitaa c
 - Supports configuration via CLI arguments or a .env file.
 - Includes Docker Compose setup for running the scraper and scheduling tasks with cron.
 
+## Dependencies
+
+- `Goquery`: For HTML parsing and scraping.
+- `go-telegram-bot-api`: For interacting with the Telegram Bot API.
+- Go standard library for HTTP requests, JSON handling, and file operations.
+
 ## Prerequisites
 
 - Go (version 1.20 or later) for building the application locally.
