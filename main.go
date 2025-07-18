@@ -366,15 +366,6 @@ func extractPosts(doc *goquery.Document, username string) ([]Post, error) {
 			post.Text = text
 		}
 
-		s.Find("img").Each(func(i int, img *goquery.Selection) {
-			if src, exists := img.Attr("src"); exists && strings.Contains(src, "/download_") {
-				fullURL := baseURL + src
-				if !contains(post.Images, fullURL) {
-					post.Images = append(post.Images, fullURL)
-				}
-			}
-		})
-
 		s.Find(".js-message_grouped_layer a").Each(func(i int, a *goquery.Selection) {
 			if style, exists := a.Attr("style"); exists && strings.Contains(style, "background-image") {
 				if url := extractBackgroundURL(style); url != "" && strings.Contains(url, "/download_") {
