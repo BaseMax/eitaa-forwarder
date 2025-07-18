@@ -30,6 +30,30 @@ type Post struct {
 	ReplyToMessageID  string   `json:"reply_to_message_id,omitempty"`
 }
 
+func escapeMarkdownV2(text string) string {
+	replacer := strings.NewReplacer(
+		"_", "\\_",
+		"*", "\\*",
+		"[", "\\[",
+		"]", "\\]",
+		"(", "\\(",
+		")", "\\)",
+		"~", "\\~",
+		"`", "\\`",
+		">", "\\>",
+		"#", "\\#",
+		"+", "\\+",
+		"-", "\\-",
+		"=", "\\=",
+		"|", "\\|",
+		"{", "\\{",
+		"}", "\\}",
+		".", "\\.",
+		"!", "\\!",
+	)
+	return replacer.Replace(text)
+}
+
 func contains(slice []string, item string) bool {
 	for _, s := range slice {
 		if s == item {
@@ -332,8 +356,8 @@ func main() {
 			for i, imgURL := range post.Images {
 				photo := tgbotapi.NewInputMediaPhoto(tgbotapi.FileURL(imgURL))
 				if i == 0 && messageText != "" {
-					photo.Caption = messageText
-					photo.ParseMode = "Markdown"
+					photo.Caption = escapeMarkdownV2(messageText)
+					photo.ParseMode = "MarkdownV2"
 				}
 				mediaGroup = append(mediaGroup, photo)
 			}
