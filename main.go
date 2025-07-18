@@ -183,6 +183,52 @@ func saveSentPostID(filename, postID string) error {
 	}
 	return os.WriteFile(filename, data, 0644)
 }
+
+func getEnvOrFlag(flagVal, envVar string, defaultVal ...string) string {
+	if flagVal != "" {
+		return flagVal
+	}
+	if val := os.Getenv(envVar); val != "" {
+		return val
+	}
+	if len(defaultVal) > 0 {
+		return defaultVal[0]
+	}
+	log.Fatalf("Missing required value for %s", envVar)
+	return ""
+}
+
+func buildMessageText(post Post, username string) string {
+	var sb strings.Builder
+
+	if post.Text != "" {
+		sb.WriteString(post.Text)
+	}
+
+	if post.IsForwarded {
+		sb.WriteString(fmt.Sprintf("\n\n_Forwarded from:_ [%s](%s)", post.ForwardedFrom, post.ForwardedFromLink))
+	}
+
+	if post.IsReply {
+		sb.WriteString(fmt.Sprintf("\n\n_In reply to:_ https://eitaa.com/%s/%s", username, post.ReplyToMessageID))
+	}
+
+	if post.Time != "" && post.Date != "" {
+		sb.WriteString(fmt.Sprintf("\n\n_Posted on:_ %s %s", post.Date, post.Time))
+	}
+
+	return sb.String()
+}
+
+func prettyJSON(data interface{}) []byte {
+	b, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		log.Printf("Failed to format JSON: %v", err)
+		return []byte("[]")
+	}
+	return b
+}
+
 func main() {
 	err := godotenv.Load()
 	if err != nil {
@@ -278,20 +324,16 @@ func main() {
 			msg.ParseMode = "Markdown"
 			_, err := bot.Send(msg)
 			if err != nil {
-				log.Printf("Failed to send text: %v", err)
+				log.Printf("Failed to send text for post %s: %v", post.ID, err)
 				continue
 			}
-		} else {
-			log.Printf("Skipping post %s: contains images, not sending", post.ID)
-			continue
-		}
-
-		if len(post.Images) > 0 {
+		} else if len(post.Images) > 0 {
 			var mediaGroup []interface{}
 			for i, imgURL := range post.Images {
 				photo := tgbotapi.NewInputMediaPhoto(tgbotapi.FileURL(imgURL))
 				if i == 0 && messageText != "" {
 					photo.Caption = messageText
+					photo.ParseMode = "Markdown"
 				}
 				mediaGroup = append(mediaGroup, photo)
 			}
@@ -303,10 +345,14 @@ func main() {
 				cfg = tgbotapi.MediaGroupConfig{ChatID: telegramChatIDInt, Media: mediaGroup}
 			}
 
-			if _, err := bot.SendMediaGroup(cfg); err != nil {
+			_, err := bot.SendMediaGroup(cfg)
+			if err != nil {
 				log.Printf("Failed to send media group for post %s: %v", post.ID, err)
 				continue
 			}
+		} else {
+			log.Printf("Skipping post %s: no text or images to send", post.ID)
+			continue
 		}
 
 		if err := saveSentPostID(sentIDsFile, post.ID); err != nil {
@@ -315,49 +361,4 @@ func main() {
 			fmt.Printf("✅ Sent post %s\n", post.ID)
 		}
 	}
-}
-
-func getEnvOrFlag(flagVal, envVar string, defaultVal ...string) string {
-	if flagVal != "" {
-		return flagVal
-	}
-	if val := os.Getenv(envVar); val != "" {
-		return val
-	}
-	if len(defaultVal) > 0 {
-		return defaultVal[0]
-	}
-	log.Fatalf("Missing required value for %s", envVar)
-	return ""
-}
-
-func buildMessageText(post Post, username string) string {
-	var sb strings.Builder
-
-	if post.Text != "" {
-		sb.WriteString(post.Text)
-	}
-
-	if post.IsForwarded {
-		sb.WriteString(fmt.Sprintf("\n\n_Forwarded from:_ [%s](%s)", post.ForwardedFrom, post.ForwardedFromLink))
-	}
-
-	if post.IsReply {
-		sb.WriteString(fmt.Sprintf("\n\n_In reply to:_ https://eitaa.com/%s/%s", username, post.ReplyToMessageID))
-	}
-
-	if post.Time != "" && post.Date != "" {
-		sb.WriteString(fmt.Sprintf("\n\n_Posted on:_ %s %s", post.Date, post.Time))
-	}
-
-	return sb.String()
-}
-
-func prettyJSON(data interface{}) []byte {
-	b, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		log.Printf("Failed to format JSON: %v", err)
-		return []byte("[]")
-	}
-	return b
 }
