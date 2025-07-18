@@ -54,6 +54,31 @@ func escapeMarkdownV2(text string) string {
 	return replacer.Replace(text)
 }
 
+func downloadFile(url, filepath string) error {
+	resp, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("failed to download %s: %v", url, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("bad status downloading %s: %s", url, resp.Status)
+	}
+
+	out, err := os.Create(filepath)
+	if err != nil {
+		return fmt.Errorf("failed to create file %s: %v", filepath, err)
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to save file %s: %v", filepath, err)
+	}
+
+	return nil
+}
+
 func contains(slice []string, item string) bool {
 	for _, s := range slice {
 		if s == item {
@@ -352,9 +377,26 @@ func main() {
 				continue
 			}
 		} else if len(post.Images) > 0 {
-			var mediaGroup []interface{}
+			mediaGroup := make([]interface{}, 0, len(post.Images))
+
+			dir := fmt.Sprintf("media/%s", post.ID)
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				log.Printf("Failed to create directory %s: %v", dir, err)
+				continue
+			}
+
 			for i, imgURL := range post.Images {
-				photo := tgbotapi.NewInputMediaPhoto(tgbotapi.FileURL(imgURL))
+				ext := ".jpg"
+				filename := fmt.Sprintf("%s/img%d%s", dir, i+1, ext)
+
+				if _, err := os.Stat(filename); os.IsNotExist(err) {
+					if err := downloadFile(imgURL, filename); err != nil {
+						log.Printf("Failed to download image %s: %v", imgURL, err)
+						continue
+					}
+				}
+
+				photo := tgbotapi.NewInputMediaPhoto(tgbotapi.FilePath(filename))
 				if i == 0 && messageText != "" {
 					photo.Caption = escapeMarkdownV2(messageText)
 					photo.ParseMode = "MarkdownV2"

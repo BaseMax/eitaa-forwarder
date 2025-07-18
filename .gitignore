@@ -4,3 +4,7 @@ run.sh
 *.html
 .env
 *.exe
+media/*.png
+media/*.jpeg
+media/*.jpg
+media/*.webp
