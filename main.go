@@ -5,20 +5,22 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/joho/godotenv"
 )
 
 type Post struct {
 	ID                string   `json:"id"`
 	Text              string   `json:"text,omitempty"`
 	Images            []string `json:"images,omitempty"`
-	Videos            []string `json:"videos,omitempty"`
 	Time              string   `json:"time,omitempty"`
 	Date              string   `json:"date,omitempty"`
 	IsForwarded       bool     `json:"is_forwarded,omitempty"`
@@ -95,15 +97,6 @@ func extractPosts(doc *goquery.Document, username string) ([]Post, error) {
 			}
 		})
 
-		s.Find("video").Each(func(i int, vid *goquery.Selection) {
-			if src, exists := vid.Attr("src"); exists {
-				fullURL := baseURL + src
-				if !contains(post.Videos, fullURL) {
-					post.Videos = append(post.Videos, fullURL)
-				}
-			}
-		})
-
 		timeElem := s.Find("time").First()
 		if timeElem.Length() > 0 {
 			post.Time = timeElem.Text()
@@ -152,12 +145,11 @@ func extractPosts(doc *goquery.Document, username string) ([]Post, error) {
 	return posts, nil
 }
 
-// loadSentPostIDs reads the list of sent post IDs from a file
 func loadSentPostIDs(filename string) (map[string]bool, error) {
 	sentIDs := make(map[string]bool)
 	data, err := os.ReadFile(filename)
 	if os.IsNotExist(err) {
-		return sentIDs, nil // File doesn't exist yet, return empty map
+		return sentIDs, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to read sent IDs file: %v", err)
@@ -172,14 +164,13 @@ func loadSentPostIDs(filename string) (map[string]bool, error) {
 	return sentIDs, nil
 }
 
-// saveSentPostID appends a post ID to the sent IDs file
 func saveSentPostID(filename, postID string) error {
 	sentIDs, err := loadSentPostIDs(filename)
 	if err != nil {
 		return err
 	}
 	if sentIDs[postID] {
-		return nil // ID already exists, no need to save
+		return nil
 	}
 	sentIDs[postID] = true
 	var ids []string
@@ -192,9 +183,12 @@ func saveSentPostID(filename, postID string) error {
 	}
 	return os.WriteFile(filename, data, 0644)
 }
-
 func main() {
-	// Define CLI flags
+	err := godotenv.Load()
+	if err != nil {
+		log.Println("No .env file found or failed to load it")
+	}
+
 	usernameFlag := flag.String("username", "", "Eitaa channel username (e.g., m_ahlebeit)")
 	outputFlag := flag.String("output", "", "Output JSON file")
 	telegramTokenFlag := flag.String("telegram-token", "", "Telegram bot token")
@@ -202,45 +196,19 @@ func main() {
 	sentIDsFileFlag := flag.String("sent-ids-file", "", "File to store sent post IDs")
 	flag.Parse()
 
-	// Check CLI flags first, then fall back to environment variables
-	username := *usernameFlag
-	if username == "" {
-		username = os.Getenv("USERNAME")
-	}
-	if username == "" {
-		log.Fatal("Please provide a username via -username flag or USERNAME environment variable")
-	}
+	username := getEnvOrFlag(*usernameFlag, "USERNAME")
+	output := getEnvOrFlag(*outputFlag, "OUTPUT", "posts.json")
+	telegramToken := getEnvOrFlag(*telegramTokenFlag, "TELEGRAM_TOKEN")
+	telegramChatID := getEnvOrFlag(*telegramChatIDFlag, "TELEGRAM_CHAT_ID")
+	sentIDsFile := getEnvOrFlag(*sentIDsFileFlag, "SENT_IDS_FILE", "sent_ids.json")
 
-	output := *outputFlag
-	if output == "" {
-		output = os.Getenv("OUTPUT")
-	}
-	if output == "" {
-		output = "posts.json"
-	}
-
-	telegramToken := *telegramTokenFlag
-	if telegramToken == "" {
-		telegramToken = os.Getenv("TELEGRAM_TOKEN")
-	}
-	if telegramToken == "" {
-		log.Fatal("Please provide a Telegram bot token via -telegram-token flag or TELEGRAM_TOKEN environment variable")
-	}
-
-	telegramChatID := *telegramChatIDFlag
-	if telegramChatID == "" {
-		telegramChatID = os.Getenv("TELEGRAM_CHAT_ID")
-	}
-	if telegramChatID == "" {
-		log.Fatal("Please provide a Telegram chat ID via -telegram-chat-id flag or TELEGRAM_CHAT_ID environment variable")
-	}
-
-	sentIDsFile := *sentIDsFileFlag
-	if sentIDsFile == "" {
-		sentIDsFile = os.Getenv("SENT_IDS_FILE")
-	}
-	if sentIDsFile == "" {
-		sentIDsFile = "sent_ids.json"
+	var telegramChatIDInt int64
+	isChannel := strings.HasPrefix(telegramChatID, "@")
+	if !isChannel {
+		telegramChatIDInt, err = strconv.ParseInt(telegramChatID, 10, 64)
+		if err != nil {
+			log.Fatalf("Invalid Telegram chat ID: %s", telegramChatID)
+		}
 	}
 
 	sentIDs, err := loadSentPostIDs(sentIDsFile)
@@ -248,15 +216,26 @@ func main() {
 		log.Fatalf("Failed to load sent post IDs: %v", err)
 	}
 
-	url := fmt.Sprintf("https://eitaa.com/%s", username)
-	resp, err := http.Get(url)
+	resp, err := http.Get(fmt.Sprintf("https://eitaa.com/%s", username))
 	if err != nil {
 		log.Fatalf("Failed to fetch channel page: %v", err)
 	}
 	defer resp.Body.Close()
 
+	rawHTMLFile := "channel_page.html"
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatalf("Failed to read response body: %v", err)
+	}
+
+	if err := os.WriteFile(rawHTMLFile, bodyBytes, 0644); err != nil {
+		log.Fatalf("Failed to save raw HTML to file: %v", err)
+	}
+
+	resp.Body = io.NopCloser(strings.NewReader(string(bodyBytes)))
+
 	if resp.StatusCode != http.StatusOK {
-		log.Fatalf("Received non-OK HTTP status: %s", resp.Status)
+		log.Fatalf("Non-OK HTTP status: %s", resp.Status)
 	}
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
@@ -269,21 +248,13 @@ func main() {
 		log.Fatalf("Failed to extract posts: %v", err)
 	}
 
-	jsonData, err := json.MarshalIndent(posts, "", "  ")
-	if err != nil {
-		log.Fatalf("Failed to marshal JSON: %v", err)
+	if err := os.WriteFile(output, prettyJSON(posts), 0644); err != nil {
+		log.Fatalf("Failed to write JSON: %v", err)
 	}
-
-	err = os.WriteFile(output, jsonData, 0644)
-	if err != nil {
-		log.Fatalf("Failed to write JSON file: %v", err)
-	}
-
-	fmt.Printf("Successfully scraped %d posts to %s\n", len(posts), output)
 
 	bot, err := tgbotapi.NewBotAPI(telegramToken)
 	if err != nil {
-		log.Fatalf("Failed to initialize Telegram bot: %v", err)
+		log.Fatalf("Telegram bot init failed: %v", err)
 	}
 
 	for _, post := range posts {
@@ -292,44 +263,89 @@ func main() {
 			continue
 		}
 
-		messageText := post.Text
-		if post.IsForwarded {
-			messageText += fmt.Sprintf("\n\nForwarded from: %s (%s)", post.ForwardedFrom, post.ForwardedFromLink)
-		}
-		if post.IsReply {
-			messageText += fmt.Sprintf("\n\nIn reply to: https://eitaa.com/%s/%s", username, post.ReplyToMessageID)
-		}
-		if post.Time != "" && post.Date != "" {
-			messageText += fmt.Sprintf("\n\nPosted on: %s %s", post.Date, post.Time)
+		messageText := buildMessageText(post, username)
+
+		if len(post.Images) == 0 && messageText != "" {
+			var msg tgbotapi.MessageConfig
+			if isChannel {
+				msg = tgbotapi.NewMessageToChannel(telegramChatID, messageText)
+			} else {
+				msg = tgbotapi.NewMessage(telegramChatIDInt, messageText)
+			}
+			_, err := bot.Send(msg)
+			if err != nil {
+				log.Printf("Failed to send text: %v", err)
+				continue
+			}
 		}
 
-		msg := tgbotapi.NewMessageToChannel(telegramChatID, messageText)
-		sentMsg, err := bot.Send(msg)
-		if err != nil {
-			log.Printf("Failed to send post %s to Telegram: %v", post.ID, err)
-			continue
+		if len(post.Images) > 0 {
+			var mediaGroup []interface{}
+			for i, imgURL := range post.Images {
+				photo := tgbotapi.NewInputMediaPhoto(tgbotapi.FileURL(imgURL))
+				if i == 0 && messageText != "" {
+					photo.Caption = messageText
+				}
+				mediaGroup = append(mediaGroup, photo)
+			}
+
+			var cfg tgbotapi.MediaGroupConfig
+			if isChannel {
+				cfg = tgbotapi.MediaGroupConfig{ChannelUsername: telegramChatID, Media: mediaGroup}
+			} else {
+				cfg = tgbotapi.MediaGroupConfig{ChatID: telegramChatIDInt, Media: mediaGroup}
+			}
+
+			if _, err := bot.SendMediaGroup(cfg); err != nil {
+				log.Printf("Failed to send media group for post %s: %v", post.ID, err)
+				continue
+			}
 		}
 
 		if err := saveSentPostID(sentIDsFile, post.ID); err != nil {
-			log.Printf("Failed to save sent post ID %s: %v", post.ID, err)
+			log.Printf("Failed to save post ID %s: %v", post.ID, err)
 		} else {
-			fmt.Printf("Successfully sent post %s to Telegram (Message ID: %d)\n", post.ID, sentMsg.MessageID)
-		}
-
-		for _, imgURL := range post.Images {
-			photoMsg := tgbotapi.NewPhotoToChannel(telegramChatID, tgbotapi.FileURL(imgURL))
-			_, err := bot.Send(photoMsg)
-			if err != nil {
-				log.Printf("Failed to send image %s for post %s: %v", imgURL, post.ID, err)
-			}
-		}
-
-		for _, vidURL := range post.Videos {
-			videoMsg := tgbotapi.NewVideoToChannel(telegramChatID, tgbotapi.FileURL(vidURL))
-			_, err := bot.Send(videoMsg)
-			if err != nil {
-				log.Printf("Failed to send video %s for post %s: %v", vidURL, post.ID, err)
-			}
+			fmt.Printf("✅ Sent post %s\n", post.ID)
 		}
 	}
+}
+
+func getEnvOrFlag(flagVal, envVar string, defaultVal ...string) string {
+	if flagVal != "" {
+		return flagVal
+	}
+	if val := os.Getenv(envVar); val != "" {
+		return val
+	}
+	if len(defaultVal) > 0 {
+		return defaultVal[0]
+	}
+	log.Fatalf("Missing required value for %s", envVar)
+	return ""
+}
+
+func buildMessageText(post Post, username string) string {
+	var sb strings.Builder
+	if post.Text != "" {
+		sb.WriteString(post.Text)
+	}
+	if post.IsForwarded {
+		sb.WriteString(fmt.Sprintf("\n\nForwarded from: %s (%s)", post.ForwardedFrom, post.ForwardedFromLink))
+	}
+	if post.IsReply {
+		sb.WriteString(fmt.Sprintf("\n\nIn reply to: https://eitaa.com/%s/%s", username, post.ReplyToMessageID))
+	}
+	if post.Time != "" && post.Date != "" {
+		sb.WriteString(fmt.Sprintf("\n\nPosted on: %s %s", post.Date, post.Time))
+	}
+	return sb.String()
+}
+
+func prettyJSON(data interface{}) []byte {
+	b, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		log.Printf("Failed to format JSON: %v", err)
+		return []byte("[]")
+	}
+	return b
 }

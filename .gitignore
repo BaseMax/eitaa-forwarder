@@ -1,4 +1,6 @@
 run.bat
 run.sh
 *.json
+*.html
 .env
+*.exe

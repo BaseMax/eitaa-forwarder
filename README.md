@@ -1,11 +1,11 @@
-# Eitaa Extractor
+# Eitaa Forwarder
 
-Eitaa Extractor is a Go-based web scraper designed to extract posts from Eitaa channels. It retrieves post details such as text, images, videos, timestamps, and metadata (e.g., forwarded or reply information) and saves them to a JSON file. The project includes Docker and Docker Compose configurations for easy deployment and scheduled scraping via a cron job.
+Eitaa Forwarder is a Go-based web scraper designed to extract posts from Eitaa channels. It retrieves post details such as text, images, timestamps, and metadata (e.g., forwarded or reply information) and saves them to a JSON file. The project includes Docker and Docker Compose configurations for easy deployment and scheduled scraping via a cron job.
 
 ## Features
 
 - Scrapes posts from a specified Eitaa channel.
-- Extracts post details including text, images, videos, timestamps, forwarded posts, and replies.
+- Extracts post details including text, images, timestamps, forwarded posts, and replies.
 - Saves scraped data to a JSON file.
 - Supports configuration via CLI arguments or a .env file.
 - Includes Docker Compose setup for running the scraper and scheduling tasks with cron.
