@@ -56,34 +56,39 @@ func NewApp(config Config) (*App, error) {
 	}
 
 	client := &http.Client{Jar: jar}
-	bot, err := tgbotapi.NewBotAPI(config.TelegramToken)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize telegram bot: %w", err)
-	}
-
-	isChannel := strings.HasPrefix(config.TelegramChatID, "@")
-	var chatID int64
-	if !isChannel {
-		chatID, err = strconv.ParseInt(config.TelegramChatID, 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("invalid telegram chat ID: %w", err)
-		}
-	}
-
 	sentIDs, err := loadSentPostIDs(config.SentIDsFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load sent post IDs: %w", err)
 	}
 
 	return &App{
-		client:    client,
-		config:    config,
-		sentIDs:   sentIDs,
-		bot:       bot,
-		isChannel: isChannel,
-		chatID:    chatID,
-		logger:    log.New(os.Stdout, "INFO: ", log.LstdFlags),
+		client:  client,
+		config:  config,
+		sentIDs: sentIDs,
+		logger:  log.New(os.Stdout, "INFO: ", log.LstdFlags),
 	}, nil
+}
+
+func (app *App) InitTelegram() error {
+	isChannel := strings.HasPrefix(app.config.TelegramChatID, "@")
+	var chatID int64
+	if !isChannel {
+		var err error
+		chatID, err = strconv.ParseInt(app.config.TelegramChatID, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid telegram chat ID: %w", err)
+		}
+	}
+
+	bot, err := tgbotapi.NewBotAPI(app.config.TelegramToken)
+	if err != nil {
+		return fmt.Errorf("failed to initialize telegram bot: %w", err)
+	}
+
+	app.bot = bot
+	app.isChannel = isChannel
+	app.chatID = chatID
+	return nil
 }
 
 func (app *App) Run() error {
@@ -92,8 +97,12 @@ func (app *App) Run() error {
 		return fmt.Errorf("failed to fetch and extract posts: %w", err)
 	}
 
-	if err := app.savePostsToJSON(posts); err != nil {
-		return fmt.Errorf("failed to save posts to JSON: %w", err)
+	if err := app.savePostsAndMedia(posts); err != nil {
+		return fmt.Errorf("failed to save posts and media: %w", err)
+	}
+
+	if err := app.InitTelegram(); err != nil {
+		return fmt.Errorf("failed to initialize telegram: %w", err)
 	}
 
 	return app.processAndSendPosts(posts)
@@ -147,6 +156,33 @@ func (app *App) setRequestHeaders(req *http.Request) {
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
+}
+
+func (app *App) savePostsAndMedia(posts []Post) error {
+	if err := app.savePostsToJSON(posts); err != nil {
+		return fmt.Errorf("failed to save posts to JSON: %w", err)
+	}
+
+	for _, post := range posts {
+		if len(post.Images) == 0 {
+			continue
+		}
+
+		dir := filepath.Join("media", post.ID)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			app.logger.Printf("Failed to create directory %s: %v", dir, err)
+			continue
+		}
+
+		for i, imgURL := range post.Images {
+			filename := filepath.Join(dir, fmt.Sprintf("img%d.jpg", i+1))
+			if err := app.downloadImage(imgURL, filename); err != nil {
+				app.logger.Printf("Failed to download image %s: %v", imgURL, err)
+				continue
+			}
+		}
+	}
+	return nil
 }
 
 func (app *App) savePostsToJSON(posts []Post) error {
@@ -208,10 +244,10 @@ func (app *App) sendTextMessage(messageText string) error {
 
 func (app *App) sendMediaGroup(post Post, messageText, dir string) error {
 	mediaGroup := make([]interface{}, 0, len(post.Images))
-	for i, imgURL := range post.Images {
+	for i := range post.Images {
 		filename := filepath.Join(dir, fmt.Sprintf("img%d.jpg", i+1))
-		if err := app.downloadImage(imgURL, filename); err != nil {
-			app.logger.Printf("Failed to download image %s: %v", imgURL, err)
+		if _, err := os.Stat(filename); os.IsNotExist(err) {
+			app.logger.Printf("Image not found %s for post %s", filename, post.ID)
 			continue
 		}
 
