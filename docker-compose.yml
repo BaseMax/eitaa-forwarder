@@ -7,17 +7,39 @@ services:
       - ./output:/app/output
       - ./sent_ids:/app/sent_ids
     environment:
-      - USERNAME=${USERNAME}
+      - EITAA_USERNAME=${EITAA_USERNAME}
       - OUTPUT=${OUTPUT}
       - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
       - SENT_IDS_FILE=${SENT_IDS_FILE}
-    command: --username=${USERNAME} --output=${OUTPUT} --telegram-token=${TELEGRAM_TOKEN} --telegram-chat-id=${TELEGRAM_CHAT_ID} --sent-ids-file=${SENT_IDS_FILE}
+    command: --username=${EITAA_USERNAME} --output=${OUTPUT} --telegram-token=${TELEGRAM_TOKEN} --telegram-chat-id=${TELEGRAM_CHAT_ID} --sent-ids-file=${SENT_IDS_FILE}
 
   cron:
     image: alpine
-    command: /bin/sh -c "echo '0 * * * * /usr/bin/docker run --rm -e USERNAME=${USERNAME} -e OUTPUT=${OUTPUT} -e TELEGRAM_TOKEN=${TELEGRAM_TOKEN} -e TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID} -e SENT_IDS_FILE=${SENT_IDS_FILE} -v $(pwd)/output:/app/output -v $(pwd)/sent_ids:/app/sent_ids eitaa-scraper --username=${USERNAME} --output=${OUTPUT} --telegram-token=${TELEGRAM_TOKEN} --telegram-chat-id=${TELEGRAM_CHAT_ID} --sent-ids-file=${SENT_IDS_FILE}' > /etc/crontabs/root && crond -f"
+    environment:
+      - EITAA_USERNAME=${EITAA_USERNAME}
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - OUTPUT=${OUTPUT}
+      - SENT_IDS_FILE=${SENT_IDS_FILE}
+      - CRON_SCHEDULE=${CRON_SCHEDULE}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./output:/app/output
       - ./sent_ids:/app/sent_ids
+    command: >
+      /bin/sh -c "
+        echo \"$CRON_SCHEDULE /usr/bin/docker run --rm \
+        -e EITAA_USERNAME=$EITAA_USERNAME \
+        -e OUTPUT=$OUTPUT \
+        -e TELEGRAM_TOKEN=$TELEGRAM_TOKEN \
+        -e TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID \
+        -e SENT_IDS_FILE=$SENT_IDS_FILE \
+        -v $(pwd)/output:/app/output \
+        -v $(pwd)/sent_ids:/app/sent_ids \
+        eitaa-scraper \
+        --username=$EITAA_USERNAME \
+        --output=$OUTPUT \
+        --telegram-token=$TELEGRAM_TOKEN \
+        --telegram-chat-id=$TELEGRAM_CHAT_ID \
+        --sent-ids-file=$SENT_IDS_FILE\" > /etc/crontabs/root && crond -f"
