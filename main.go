@@ -152,15 +152,27 @@ func extractPosts(doc *goquery.Document, username string) ([]Post, error) {
 }
 
 func main() {
-	username := flag.String("username", "", "Eitaa channel username (e.g., m_ahlebeit)")
-	output := flag.String("output", "posts.json", "Output JSON file")
+	usernameFlag := flag.String("username", "", "Eitaa channel username (e.g., m_ahlebeit)")
+	outputFlag := flag.String("output", "", "Output JSON file")
 	flag.Parse()
 
-	if *username == "" {
-		log.Fatal("Please provide a username with -username")
+	username := *usernameFlag
+	if username == "" {
+		username = os.Getenv("USERNAME")
+	}
+	if username == "" {
+		log.Fatal("Please provide a username via -username flag or USERNAME environment variable")
 	}
 
-	url := fmt.Sprintf("https://eitaa.com/%s", *username)
+	output := *outputFlag
+	if output == "" {
+		output = os.Getenv("OUTPUT")
+	}
+	if output == "" {
+		output = "posts.json"
+	}
+
+	url := fmt.Sprintf("https://eitaa.com/%s", username)
 	resp, err := http.Get(url)
 	if err != nil {
 		log.Fatalf("Failed to fetch channel page: %v", err)
@@ -176,7 +188,7 @@ func main() {
 		log.Fatalf("Failed to parse HTML: %v", err)
 	}
 
-	posts, err := extractPosts(doc, *username)
+	posts, err := extractPosts(doc, username)
 	if err != nil {
 		log.Fatalf("Failed to extract posts: %v", err)
 	}
@@ -186,10 +198,10 @@ func main() {
 		log.Fatalf("Failed to marshal JSON: %v", err)
 	}
 
-	err = os.WriteFile(*output, jsonData, 0644)
+	err = os.WriteFile(output, jsonData, 0644)
 	if err != nil {
 		log.Fatalf("Failed to write JSON file: %v", err)
 	}
 
-	fmt.Printf("Successfully scraped %d posts to %s\n", len(posts), *output)
+	fmt.Printf("Successfully scraped %d posts to %s\n", len(posts), output)
 }

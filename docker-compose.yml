@@ -1,15 +1,18 @@
 version: '3'
-   services:
-     scraper:
-       build: .
-       image: eitaa-scraper
-       volumes:
-         - ./output:/app/output
-       command: --username=your_username --output=/app/output/posts.json
+services:
+  scraper:
+    build: .
+    image: eitaa-scraper
+    volumes:
+      - ./output:/app/output
+    environment:
+      - USERNAME=${USERNAME}
+      - OUTPUT=${OUTPUT}
+    command: --username=${USERNAME} --output=${OUTPUT}
 
-     cron:
-       image: alpine
-       command: /bin/sh -c "echo '0 * * * * /usr/bin/docker run --rm eitaa-scraper --username=your_username --output=/app/output/posts.json' > /etc/crontabs/root && crond -f"
-       volumes:
-         - /var/run/docker.sock:/var/run/docker.sock
-         - ./output:/app/output
+  cron:
+    image: alpine
+    command: /bin/sh -c "echo '0 * * * * /usr/bin/docker run --rm -e USERNAME=${USERNAME} -e OUTPUT=${OUTPUT} eitaa-scraper --username=${USERNAME} --output=${OUTPUT}' > /etc/crontabs/root && crond -f"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./output:/app/output
