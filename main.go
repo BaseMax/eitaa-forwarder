@@ -312,7 +312,16 @@ func (app *App) downloadImage(url, filename string, refererURL string) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	app.logger.Printf("Response status for %s: %s", url, resp.Status)
+	app.logger.Printf("Response headers for %s: %v", url, resp.Header)
+
+	if resp.StatusCode == http.StatusPartialContent {
+		app.logger.Printf("Received 206 Partial Content for %s", url)
+		contentRange := resp.Header.Get("Content-Range")
+		if contentRange != "" {
+			app.logger.Printf("Content-Range: %s", contentRange)
+		}
+	} else if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("bad status downloading %s: %s", url, resp.Status)
 	}
 
