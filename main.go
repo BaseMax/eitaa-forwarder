@@ -186,7 +186,7 @@ func saveSentPostID(filename, postID string) error {
 func main() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Println("No .env file found or failed to load it")
+		log.Println("Warning: .env file not found or failed to load")
 	}
 
 	usernameFlag := flag.String("username", "", "Eitaa channel username (e.g., m_ahlebeit)")
@@ -196,11 +196,16 @@ func main() {
 	sentIDsFileFlag := flag.String("sent-ids-file", "", "File to store sent post IDs")
 	flag.Parse()
 
-	username := getEnvOrFlag(*usernameFlag, "USERNAME")
+	username := getEnvOrFlag(*usernameFlag, "EITAA_USERNAME")
 	output := getEnvOrFlag(*outputFlag, "OUTPUT", "posts.json")
 	telegramToken := getEnvOrFlag(*telegramTokenFlag, "TELEGRAM_TOKEN")
 	telegramChatID := getEnvOrFlag(*telegramChatIDFlag, "TELEGRAM_CHAT_ID")
 	sentIDsFile := getEnvOrFlag(*sentIDsFileFlag, "SENT_IDS_FILE", "sent_ids.json")
+
+	if username == "" {
+		log.Fatalf("Username not provided. Set --username flag or USERNAME in .env")
+	}
+	log.Printf("Username: %s", username)
 
 	var telegramChatIDInt int64
 	isChannel := strings.HasPrefix(telegramChatID, "@")
@@ -222,23 +227,24 @@ func main() {
 	}
 	defer resp.Body.Close()
 
-	rawHTMLFile := "channel_page.html"
+	if resp.StatusCode != http.StatusOK {
+		log.Fatalf("Non-OK HTTP status: %s", resp.Status)
+	}
+
+	// Read body first
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Fatalf("Failed to read response body: %v", err)
 	}
 
+	// Save raw HTML before parsing
+	rawHTMLFile := "channel_page.html"
 	if err := os.WriteFile(rawHTMLFile, bodyBytes, 0644); err != nil {
 		log.Fatalf("Failed to save raw HTML to file: %v", err)
 	}
 
-	resp.Body = io.NopCloser(strings.NewReader(string(bodyBytes)))
-
-	if resp.StatusCode != http.StatusOK {
-		log.Fatalf("Non-OK HTTP status: %s", resp.Status)
-	}
-
-	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	// Reuse body for goquery
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(string(bodyBytes)))
 	if err != nil {
 		log.Fatalf("Failed to parse HTML: %v", err)
 	}
