@@ -140,7 +140,7 @@ func extractPosts(doc *goquery.Document, username string) ([]Post, error) {
 		}
 
 		if post.ID != "" {
-			posts = extractPosts(posts, post)
+			posts = append(posts, post)
 		}
 	})
 
