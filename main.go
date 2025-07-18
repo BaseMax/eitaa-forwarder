@@ -248,9 +248,9 @@ func (app *App) processPost(post Post) error {
 func (app *App) sendTextMessage(messageText string) error {
 	var msg tgbotapi.MessageConfig
 	if app.isChannel {
-		msg = tgbotapi.NewMessageToChannel(app.config.TelegramChatID, messageText)
+		msg = tgbotapi.NewMessageToChannel(app.config.TelegramChatID, escapeMarkdownV2(messageText))
 	} else {
-		msg = tgbotapi.NewMessage(app.chatID, messageText)
+		msg = tgbotapi.NewMessage(app.chatID, escapeMarkdownV2(messageText))
 	}
 	msg.ParseMode = "MarkdownV2"
 	_, err := app.bot.Send(msg)
@@ -366,7 +366,16 @@ func extractPosts(doc *goquery.Document, username string) ([]Post, error) {
 			post.Text = text
 		}
 
-		s.Find(".js-message_grouped_layer a").Each(func(i int, a *goquery.Selection) {
+		// s.Find("img").Each(func(i int, img *goquery.Selection) {
+		// 	if src, exists := img.Attr("src"); exists && strings.Contains(src, "/download_") {
+		// 		fullURL := baseURL + src
+		// 		if !contains(post.Images, fullURL) {
+		// 			post.Images = append(post.Images, fullURL)
+		// 		}
+		// 	}
+		// })
+
+		s.Find("a.etme_widget_message_photo_wrap").Each(func(i int, a *goquery.Selection) {
 			if style, exists := a.Attr("style"); exists && strings.Contains(style, "background-image") {
 				if url := extractBackgroundURL(style); url != "" && strings.Contains(url, "/download_") {
 					fullURL := baseURL + url
