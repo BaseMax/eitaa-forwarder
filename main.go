@@ -231,19 +231,16 @@ func main() {
 		log.Fatalf("Non-OK HTTP status: %s", resp.Status)
 	}
 
-	// Read body first
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Fatalf("Failed to read response body: %v", err)
 	}
 
-	// Save raw HTML before parsing
 	rawHTMLFile := "channel_page.html"
 	if err := os.WriteFile(rawHTMLFile, bodyBytes, 0644); err != nil {
 		log.Fatalf("Failed to save raw HTML to file: %v", err)
 	}
 
-	// Reuse body for goquery
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(string(bodyBytes)))
 	if err != nil {
 		log.Fatalf("Failed to parse HTML: %v", err)
@@ -283,6 +280,9 @@ func main() {
 				log.Printf("Failed to send text: %v", err)
 				continue
 			}
+		} else {
+			log.Printf("Skipping post %s: contains images, not sending", post.ID)
+			continue
 		}
 
 		if len(post.Images) > 0 {
