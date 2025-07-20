@@ -15,7 +15,7 @@ services:
     command: --username=${EITAA_USERNAME} --output=${OUTPUT} --telegram-token=${TELEGRAM_TOKEN} --telegram-chat-id=${TELEGRAM_CHAT_ID} --sent-ids-file=${SENT_IDS_FILE}
 
   cron:
-    image: alpine
+    image: docker:cli
     environment:
       - EITAA_USERNAME=${EITAA_USERNAME}
       - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
@@ -29,7 +29,7 @@ services:
       - ./sent_ids:/app/sent_ids
     command: >
       /bin/sh -c "
-        echo \"$CRON_SCHEDULE /usr/bin/docker run --rm \
+        echo \"$CRON_SCHEDULE docker run --rm \
         -e EITAA_USERNAME=$EITAA_USERNAME \
         -e OUTPUT=$OUTPUT \
         -e TELEGRAM_TOKEN=$TELEGRAM_TOKEN \
