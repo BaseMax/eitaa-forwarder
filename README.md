@@ -1,6 +1,6 @@
 # Eitaa Forwarder
 
-Eitaa Forwarder is a Telegram bot and web scraper built in Go that captures posts from Eitaa channels and automatically forwards them to a designated Telegram chat or channel. It collects various post elements—including text, images, timestamps, and metadata like forwarding or reply details—stores this data in a JSON file, and ensures new posts are sent to Telegram without manual intervention.
+Eitaa Forwarder is a Telegram bot and web scraper built in Go that captures posts from Eitaa channels and automatically forwards them to a designated Telegram chat or channel. It collects various post elements including text, images, timestamps, and metadata like forwarding or reply details—stores this data in a JSON file, and ensures new posts are sent to Telegram without manual intervention.
 
 ## Features
 
