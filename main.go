@@ -37,6 +37,7 @@ type Config struct {
 	TelegramToken  string
 	TelegramChatID string
 	SentIDsFile    string
+	AddFooter      bool
 }
 
 type App struct {
@@ -234,7 +235,7 @@ func (app *App) processAndSendPosts(posts []Post) error {
 }
 
 func (app *App) processPost(post Post) error {
-	messageText := buildMessageText(post, app.config.Username)
+	messageText := buildMessageText(post, app.config.Username, app.config.AddFooter)
 	dir := filepath.Join("media", post.ID)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", dir, err)
@@ -380,15 +381,6 @@ func extractPosts(doc *goquery.Document, username string) ([]Post, error) {
 			post.Text = text
 		}
 
-		// s.Find("img").Each(func(i int, img *goquery.Selection) {
-		// 	if src, exists := img.Attr("src"); exists && strings.Contains(src, "/download_") {
-		// 		fullURL := baseURL + src
-		// 		if !contains(post.Images, fullURL) {
-		// 			post.Images = append(post.Images, fullURL)
-		// 		}
-		// 	}
-		// })
-
 		s.Find("a.etme_widget_message_photo_wrap").Each(func(i int, a *goquery.Selection) {
 			if style, exists := a.Attr("style"); exists && strings.Contains(style, "background-image") {
 				if url := extractBackgroundURL(style); url != "" && strings.Contains(url, "/download_") {
@@ -501,10 +493,13 @@ func saveSentPostID(filename, postID string) error {
 	return os.WriteFile(filename, data, 0644)
 }
 
-func buildMessageText(post Post, username string) string {
+func buildMessageText(post Post, username string, addFooter bool) string {
 	var sb strings.Builder
 	if post.Text != "" {
 		sb.WriteString(post.Text)
+	}
+	if !addFooter {
+		return sb.String()
 	}
 	if post.IsForwarded {
 		sb.WriteString(fmt.Sprintf("\n\nForwarded from: [%s](%s)", post.ForwardedFrom, post.ForwardedFromLink))
@@ -537,12 +532,22 @@ func main() {
 		log.Printf("Warning: .env file not found or failed to load: %v", err)
 	}
 
+	usernameFlag := flag.String("username", "", "Eitaa channel username")
+	outputFlag := flag.String("output", "", "Output JSON file")
+	telegramTokenFlag := flag.String("telegram-token", "", "Telegram bot token")
+	telegramChatIDFlag := flag.String("telegram-chat-id", "", "Telegram chat ID")
+	sentIDsFileFlag := flag.String("sent-ids-file", "", "File to store sent post IDs")
+	addFooterFlag := flag.Bool("add-footer", false, "Add footer to messages (true/false)")
+
+	flag.Parse()
+
 	config := Config{
-		Username:       getEnvOrFlag(*flag.String("username", "", "Eitaa channel username"), "EITAA_USERNAME"),
-		OutputFile:     getEnvOrFlag(*flag.String("output", "", "Output JSON file"), "OUTPUT", "posts.json"),
-		TelegramToken:  getEnvOrFlag(*flag.String("telegram-token", "", "Telegram bot token"), "TELEGRAM_TOKEN"),
-		TelegramChatID: getEnvOrFlag(*flag.String("telegram-chat-id", "", "Telegram chat ID"), "TELEGRAM_CHAT_ID"),
-		SentIDsFile:    getEnvOrFlag(*flag.String("sent-ids-file", "", "File to store sent post IDs"), "SENT_IDS_FILE", "sent_ids.json"),
+		AddFooter:      *addFooterFlag || strings.ToLower(os.Getenv("ADD_FOOTER")) == "true",
+		Username:       getEnvOrFlag(*usernameFlag, "EITAA_USERNAME"),
+		OutputFile:     getEnvOrFlag(*outputFlag, "OUTPUT", "posts.json"),
+		TelegramToken:  getEnvOrFlag(*telegramTokenFlag, "TELEGRAM_TOKEN"),
+		TelegramChatID: getEnvOrFlag(*telegramChatIDFlag, "TELEGRAM_CHAT_ID"),
+		SentIDsFile:    getEnvOrFlag(*sentIDsFileFlag, "SENT_IDS_FILE", "sent_ids.json"),
 	}
 
 	if config.Username == "" {
